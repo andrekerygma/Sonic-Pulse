@@ -5,6 +5,10 @@ export interface AudioClip {
   duration: string;
   progress: number;
   isPlaying: boolean;
+  audioUrl: string | null;
+  voiceCode: string;
+  segmentCount: number;
+  characterCount: number;
 }
 
 export interface VoicePersona {
@@ -13,6 +17,8 @@ export interface VoicePersona {
   code: string;
   flag: string;
   type: string;
+  locale: string;
+  gender: string;
 }
 
 export interface AppState {
@@ -22,4 +28,6 @@ export interface AppState {
   selectedVoice: VoicePersona;
   history: AudioClip[];
   isGenerating: boolean;
+  activeClipId: string | null;
+  errorMessage: string | null;
 }
