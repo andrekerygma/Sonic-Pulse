@@ -529,6 +529,20 @@ export default function App() {
       String(clip.segmentCount),
     ].some((value) => value.toLowerCase().includes(search));
   });
+  const totalLibraryCharacters = state.history.reduce((total, clip) => total + clip.characterCount, 0);
+  const totalLibrarySegments = state.history.reduce((total, clip) => total + clip.segmentCount, 0);
+  const activeViewTitle = activeView === 'biblioteca'
+    ? 'Biblioteca de áudio'
+    : activeView === 'vozes'
+      ? 'Catálogo de vozes'
+      : activeView === 'renderizacao'
+        ? 'Configurações de renderização'
+        : 'Geração sem título';
+  const estimateSummaryLabel = generationRuntime
+    ? `Estimativa total desta renderização: ~${formatRuntimeMilliseconds(generationRuntime.estimatedTotalMs)}`
+    : scriptForEstimate
+      ? `Estimativa atual: ~${formatRuntimeMilliseconds(plannedGenerationMs)}`
+      : 'Adicione um texto para ver a estimativa de renderização.';
 
   const syncActiveClipFromAudio = (ended = false) => {
     const audio = audioRef.current;
@@ -879,10 +893,6 @@ export default function App() {
     await handleToggleClip(primaryClip.id);
   };
 
-  const historyColSpan = activeView === 'biblioteca' ? 'col-span-5' : activeView === 'criar' ? 'col-span-3' : 'col-span-3';
-  const editorColSpan = activeView === 'biblioteca' ? 'col-span-4' : activeView === 'criar' ? 'col-span-6' : 'col-span-3';
-  const settingsColSpan = activeView === 'biblioteca' ? 'col-span-3' : activeView === 'criar' ? 'col-span-3' : 'col-span-6';
-
   return (
     <div className="flex h-screen bg-surface text-on-surface overflow-hidden font-sans">
       <input
@@ -917,25 +927,15 @@ export default function App() {
         </nav>
 
         <div className="mt-auto pt-6">
-          <button
-            onClick={handleGenerate}
-            disabled={state.isGenerating || !state.script.trim()}
-            className="w-full py-4 rounded-xl bg-gradient-to-br from-primary-container to-primary text-white font-bold shadow-lg shadow-primary-container/20 hover:shadow-primary-container/40 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {state.isGenerating ? (
-              <>
-                <Loader2 className="animate-spin" size={20} />
-                <span>Gerando {formatRuntimeMilliseconds(generationElapsedMs)}</span>
-              </>
-            ) : 'Gerar áudio'}
-          </button>
-          <p className="mt-3 text-[11px] text-center text-on-surface-variant leading-relaxed">
-            {generationRuntime
-              ? `Estimativa total desta renderização: ~${formatRuntimeMilliseconds(generationRuntime.estimatedTotalMs)}`
-              : scriptForEstimate
-                ? `Estimativa atual: ~${formatRuntimeMilliseconds(plannedGenerationMs)}`
-                : 'A estimativa de tempo aparece aqui quando houver texto para renderizar.'}
-          </p>
+          <div className="p-4 rounded-2xl bg-surface-low border border-white/5">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Status local</p>
+            <p className="text-sm font-bold text-on-surface">
+              {state.isGenerating ? 'Renderização em andamento' : 'Pronto para gerar'}
+            </p>
+            <p className="mt-2 text-[11px] text-on-surface-variant leading-relaxed">
+              {estimateSummaryLabel}
+            </p>
+          </div>
         </div>
       </aside>
 
@@ -943,23 +943,29 @@ export default function App() {
         <header className="h-16 flex items-center justify-between px-8 border-b border-white/5 bg-surface/80 backdrop-blur-md z-10">
           <div className="flex items-center gap-2 text-sm">
             <span className="text-on-surface-variant">Projeto /</span>
-            <span className="font-medium">
-              {activeView === 'biblioteca' ? 'Biblioteca de áudio' : activeView === 'vozes' ? 'Catálogo de vozes' : activeView === 'renderizacao' ? 'Configurações de renderização' : 'Geração sem título'}
-            </span>
+            <span className="font-medium">{activeViewTitle}</span>
           </div>
 
           <div className="flex items-center gap-6">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={16} />
-              <input
-                ref={topSearchInputRef}
-                type="text"
-                value={librarySearch}
-                onChange={(event) => setLibrarySearch(event.target.value)}
-                placeholder="Buscar clipes por título, voz ou data..."
-                className="bg-surface-low border-none rounded-full py-2 pl-10 pr-4 text-sm focus:ring-1 focus:ring-primary-container w-72 transition-all"
-              />
-            </div>
+            {activeView === 'biblioteca' ? (
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={16} />
+                <input
+                  ref={topSearchInputRef}
+                  type="text"
+                  value={librarySearch}
+                  onChange={(event) => setLibrarySearch(event.target.value)}
+                  placeholder="Buscar clipes por título, voz ou data..."
+                  className="bg-surface-low border-none rounded-full py-2 pl-10 pr-4 text-sm focus:ring-1 focus:ring-primary-container w-72 transition-all"
+                />
+              </div>
+            ) : activeView === 'vozes' ? (
+              <HeaderChip label={`${availableVoices.length.toLocaleString('pt-BR')} vozes disponíveis`} />
+            ) : activeView === 'renderizacao' ? (
+              <HeaderChip label={estimatedSegmentCount > 0 ? `${estimatedSegmentCount} trecho(s) previstos` : 'Ajuste a voz e a renderização'} />
+            ) : (
+              <HeaderChip label={scriptForEstimate ? `Estimativa ~${formatRuntimeMilliseconds(generationRuntime?.estimatedTotalMs ?? plannedGenerationMs)}` : 'Pronto para criar um novo áudio'} />
+            )}
             <div className="flex items-center gap-4 text-on-surface-variant">
               <button type="button" className="hover:text-primary transition-colors"><Bell size={20} /></button>
               <button type="button" className="hover:text-primary transition-colors"><HelpCircle size={20} /></button>
@@ -975,182 +981,381 @@ export default function App() {
           </div>
         </header>
 
-        <main className="flex-1 grid grid-cols-12 overflow-hidden">
-          <section className={`${historyColSpan} p-6 overflow-y-auto border-r border-white/5 ${activeView === 'biblioteca' ? 'bg-surface-low/40' : ''}`}>
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h3 className="font-headline text-lg font-bold">{activeView === 'biblioteca' ? 'Biblioteca de áudios' : 'Histórico recente'}</h3>
-                <p className="text-xs text-on-surface-variant mt-1">
-                  {librarySearch.trim() ? `${filteredHistory.length} resultado(s) encontrados` : 'Seus clipes gerados aparecem aqui'}
-                </p>
-              </div>
-              <span className="text-[10px] font-bold text-on-surface-variant bg-surface-high px-2 py-1 rounded uppercase tracking-wider">
-                {state.history.length} clipes
-              </span>
-            </div>
+        <main className="flex-1 overflow-hidden">
+          {activeView === 'criar' ? (
+            <div className="grid grid-cols-12 h-full overflow-hidden">
+              <section className="col-span-3 p-6 overflow-y-auto border-r border-white/5">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h3 className="font-headline text-lg font-bold">Histórico recente</h3>
+                    <p className="text-xs text-on-surface-variant mt-1">Seus clipes gerados aparecem aqui</p>
+                  </div>
+                  <span className="text-[10px] font-bold text-on-surface-variant bg-surface-high px-2 py-1 rounded uppercase tracking-wider">
+                    {state.history.length} clipes
+                  </span>
+                </div>
 
-            {filteredHistory.length === 0 ? (
-              <div className="p-5 rounded-2xl bg-surface-low border border-white/5 text-sm text-on-surface-variant leading-relaxed">
-                {state.history.length === 0
-                  ? 'Os MP3s gerados aparecem aqui. O clipe mais recente vira a prévia ativa automaticamente.'
-                  : 'Nenhum clipe corresponde à busca atual.'}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {filteredHistory.map((clip) => (
-                  <React.Fragment key={clip.id}>
-                    <HistoryItem
-                      clip={clip}
-                      onToggle={handleToggleClip}
-                      onDownload={() => downloadClip(clip)}
-                      expanded={activeView === 'biblioteca'}
+                {state.history.length === 0 ? (
+                  <div className="p-5 rounded-2xl bg-surface-low border border-white/5 text-sm text-on-surface-variant leading-relaxed">
+                    Os MP3s gerados aparecem aqui. O clipe mais recente vira a prévia ativa automaticamente.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {state.history.map((clip) => (
+                      <React.Fragment key={clip.id}>
+                        <HistoryItem
+                          clip={clip}
+                          onToggle={handleToggleClip}
+                          onDownload={() => downloadClip(clip)}
+                        />
+                      </React.Fragment>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section className="col-span-6 p-10 flex flex-col overflow-y-auto border-r border-white/5">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="font-headline text-2xl font-extrabold tracking-tight">Escreva o roteiro</h2>
+                    <p className="text-sm text-on-surface-variant mt-2">
+                      Sem limite rígido de 5.000 caracteres. Se o texto for longo, o app divide em partes e monta um único MP3 final automaticamente.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={handlePolish}
+                      disabled={isPolishing || !state.script.trim()}
+                      className="text-sm text-on-surface-variant hover:text-primary transition-colors flex items-center gap-2 disabled:opacity-50"
+                    >
+                      {isPolishing ? <Loader2 className="animate-spin" size={18} /> : <Sparkles size={18} />}
+                      <span>Refinar texto</span>
+                    </button>
+                    <button type="button" onClick={handleImportClick} className="text-sm text-on-surface-variant hover:text-primary transition-colors flex items-center gap-2">
+                      <FileUp size={18} />
+                      <span>Importar</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-6">
+                  <InfoCard
+                    title="Caracteres"
+                    value={state.script.length.toLocaleString('pt-BR')}
+                    description="O texto pode ultrapassar 5.000 caracteres sem problema."
+                    highlight={state.script.length > EDGE_TTS_CHUNK_GUIDE_CHARS}
+                  />
+                  <InfoCard
+                    title="Segmentação"
+                    value={estimatedSegmentCount > 0 ? `${estimatedSegmentCount} trecho(s)` : '0 trecho'}
+                    description={estimatedSegmentCount > 1 ? 'O backend fará várias requisições e juntará tudo em um único MP3.' : 'O texto atual cabe em uma única requisição.'}
+                    highlight={estimatedSegmentCount > 1}
+                  />
+                  <InfoCard
+                    title="Estimativa"
+                    value={scriptForEstimate ? `~${formatRuntimeMilliseconds(generationRuntime?.estimatedTotalMs ?? plannedGenerationMs)}` : '--:--'}
+                    description={
+                      generationRuntime
+                        ? 'Estimativa da renderização em andamento, com cronômetro ativo durante o processamento.'
+                        : generationSamples.length > 0
+                          ? 'Baseada no tamanho do texto e no ritmo das últimas renderizações locais.'
+                          : 'Baseada no tamanho do texto e na quantidade prevista de trechos.'
+                    }
+                    highlight={state.isGenerating}
+                  />
+                </div>
+
+                {state.errorMessage ? (
+                  <div className="mb-6 p-4 rounded-2xl border border-red-400/20 bg-red-500/10 text-sm text-red-100">
+                    {state.errorMessage}
+                  </div>
+                ) : null}
+
+                {generationRuntime ? (
+                  <GenerationProgressPanel
+                    elapsedMs={generationElapsedMs}
+                    estimatedTotalMs={generationRuntime.estimatedTotalMs}
+                    remainingMs={generationRemainingMs}
+                    characterCount={generationRuntime.characterCount}
+                    segmentCount={generationRuntime.expectedSegments}
+                    progressPercent={generationProgressPercent}
+                    status={generationStatus}
+                    usesLearnedEstimate={generationSamples.length > 0}
+                  />
+                ) : null}
+
+                <div className="flex-1 relative min-h-[22rem]">
+                  <textarea
+                    ref={scriptTextareaRef}
+                    value={state.script}
+                    onChange={(event) => setState((prev) => ({
+                      ...prev,
+                      script: event.target.value,
+                    }))}
+                    placeholder="Digite ou cole seu texto aqui para começar a gerar a locução..."
+                    className="w-full h-full bg-surface-low p-8 rounded-2xl border-none focus:ring-1 focus:ring-primary-container/30 text-lg leading-relaxed text-on-surface placeholder:text-on-surface-variant/20 resize-none font-sans transition-all"
+                  />
+                  <div className="absolute bottom-6 right-8">
+                    <div className="text-[10px] font-bold text-on-surface-variant bg-surface/50 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/5">
+                      <span className={estimatedSegmentCount > 1 ? 'text-secondary-container' : 'text-on-surface'}>
+                        {state.script.length.toLocaleString('pt-BR')}
+                      </span> CARACTERES
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-8 flex justify-between items-end gap-6">
+                  <div className="text-sm text-on-surface-variant leading-relaxed max-w-xl">
+                    {estimatedSegmentCount > 1
+                      ? `O texto será dividido automaticamente em aproximadamente ${estimatedSegmentCount} partes antes da concatenação final.`
+                      : 'O texto atual será enviado em uma única requisição de síntese.'}
+                  </div>
+                  <GenerateActionGroup
+                    onGenerate={handleGenerate}
+                    onDownload={() => downloadClip(primaryClip)}
+                    isGenerating={state.isGenerating}
+                    canGenerate={Boolean(state.script.trim())}
+                    canDownload={Boolean(primaryClip?.audioUrl)}
+                    generationElapsedMs={generationElapsedMs}
+                    estimateLabel={estimateSummaryLabel}
+                  />
+                </div>
+              </section>
+
+              <section className="col-span-3 p-8 overflow-y-auto">
+                <div ref={renderPanelRef} className="space-y-10">
+                  <CompactVoiceSelector
+                    showVoiceDropdown={showVoiceDropdown}
+                    setShowVoiceDropdown={setShowVoiceDropdown}
+                    selectedVoice={state.selectedVoice}
+                    voiceSearch={voiceSearch}
+                    onVoiceSearchChange={setVoiceSearch}
+                    filteredVoices={filteredVoices}
+                    onSelectVoice={(voice) => setState((prev) => ({ ...prev, selectedVoice: voice }))}
+                    voiceSearchInputRef={voiceSearchInputRef}
+                  />
+
+                  {voiceErrorMessage ? (
+                    <div className="p-4 rounded-2xl border border-amber-400/20 bg-amber-500/10 text-xs text-amber-100 leading-relaxed">
+                      {voiceErrorMessage}
+                    </div>
+                  ) : null}
+
+                  <div className="space-y-8">
+                    <Slider
+                      label="Tom"
+                      value={state.pitch}
+                      onChange={(value) => setState((prev) => ({ ...prev, pitch: value }))}
+                      min={-50}
+                      max={50}
+                      unit="Hz"
+                      showSign
                     />
-                  </React.Fragment>
-                ))}
-              </div>
-            )}
-          </section>
+                    <Slider
+                      label="Velocidade"
+                      value={state.rate}
+                      onChange={(value) => setState((prev) => ({ ...prev, rate: value }))}
+                      min={0.5}
+                      max={2}
+                      step={0.05}
+                      unit="x"
+                    />
+                  </div>
 
-          <section className={`${editorColSpan} p-10 flex flex-col overflow-y-auto border-r border-white/5`}>
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="font-headline text-2xl font-extrabold tracking-tight">
-                  {activeView === 'renderizacao' ? 'Preparar renderização' : 'Escreva o roteiro'}
-                </h2>
-                <p className="text-sm text-on-surface-variant mt-2">
-                  Sem limite rígido de 5.000 caracteres. Se o texto for longo, o app divide em partes e monta um único MP3 final automaticamente.
-                </p>
-              </div>
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={handlePolish}
-                  disabled={isPolishing || !state.script.trim()}
-                  className="text-sm text-on-surface-variant hover:text-primary transition-colors flex items-center gap-2 disabled:opacity-50"
-                >
-                  {isPolishing ? <Loader2 className="animate-spin" size={18} /> : <Sparkles size={18} />}
-                  <span>Refinar texto</span>
-                </button>
-                <button type="button" onClick={handleImportClick} className="text-sm text-on-surface-variant hover:text-primary transition-colors flex items-center gap-2">
-                  <FileUp size={18} />
-                  <span>Importar</span>
-                </button>
-              </div>
+                  <div className="p-6 rounded-2xl bg-surface-low border border-white/5 relative overflow-hidden group">
+                    <div className="absolute -right-4 -top-4 w-24 h-24 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-colors" />
+                    <h4 className="text-sm font-bold mb-2">Dica técnica</h4>
+                    <p className="text-xs text-on-surface-variant leading-relaxed">
+                      O edge-tts aplica o tom em Hz e a velocidade como porcentagem sobre a voz base. Ajustes sutis costumam soar mais naturais do que extremos.
+                    </p>
+                  </div>
+                </div>
+              </section>
             </div>
-
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-6">
-              <InfoCard
-                title="Caracteres"
-                value={state.script.length.toLocaleString('pt-BR')}
-                description="O texto pode ultrapassar 5.000 caracteres sem problema."
-                highlight={state.script.length > EDGE_TTS_CHUNK_GUIDE_CHARS}
-              />
-              <InfoCard
-                title="Segmentação"
-                value={estimatedSegmentCount > 0 ? `${estimatedSegmentCount} trecho(s)` : '0 trecho'}
-                description={estimatedSegmentCount > 1 ? 'O backend fará várias requisições e juntará tudo em um único MP3.' : 'O texto atual cabe em uma única requisição.'}
-                highlight={estimatedSegmentCount > 1}
-              />
-              <InfoCard
-                title="Estimativa"
-                value={scriptForEstimate ? `~${formatRuntimeMilliseconds(generationRuntime?.estimatedTotalMs ?? plannedGenerationMs)}` : '--:--'}
-                description={
-                  generationRuntime
-                    ? 'Estimativa da renderização em andamento, com cronômetro ativo durante o processamento.'
-                    : generationSamples.length > 0
-                      ? 'Baseada no tamanho do texto e no ritmo das últimas renderizações locais.'
-                      : 'Baseada no tamanho do texto e na quantidade prevista de trechos.'
-                }
-                highlight={state.isGenerating}
-              />
-            </div>
-
-            {state.errorMessage ? (
-              <div className="mb-6 p-4 rounded-2xl border border-red-400/20 bg-red-500/10 text-sm text-red-100">
-                {state.errorMessage}
+          ) : activeView === 'biblioteca' ? (
+            <div className="h-full overflow-y-auto p-8 space-y-6">
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                <InfoCard
+                  title="Clipes"
+                  value={state.history.length.toLocaleString('pt-BR')}
+                  description="Todos os arquivos gerados ficam concentrados aqui."
+                />
+                <InfoCard
+                  title="Segmentos"
+                  value={totalLibrarySegments.toLocaleString('pt-BR')}
+                  description="Total de trechos já processados e concatenados na biblioteca."
+                />
+                <InfoCard
+                  title="Caracteres"
+                  value={totalLibraryCharacters.toLocaleString('pt-BR')}
+                  description="Volume total de texto já transformado em áudio nesta sessão."
+                />
               </div>
-            ) : null}
 
-            {generationRuntime ? (
-              <GenerationProgressPanel
-                elapsedMs={generationElapsedMs}
-                estimatedTotalMs={generationRuntime.estimatedTotalMs}
-                remainingMs={generationRemainingMs}
-                characterCount={generationRuntime.characterCount}
-                segmentCount={generationRuntime.expectedSegments}
-                progressPercent={generationProgressPercent}
-                status={generationStatus}
-                usesLearnedEstimate={generationSamples.length > 0}
-              />
-            ) : null}
+              <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.85fr)] gap-6">
+                <div className="rounded-3xl border border-white/5 bg-surface-low/40 p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h3 className="font-headline text-lg font-bold">Biblioteca de áudios</h3>
+                      <p className="text-xs text-on-surface-variant mt-1">
+                        {librarySearch.trim() ? `${filteredHistory.length} resultado(s) encontrados` : 'Todos os clipes gerados ficam reunidos nesta tela.'}
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-bold text-on-surface-variant bg-surface-high px-2 py-1 rounded uppercase tracking-wider">
+                      {state.history.length} clipes
+                    </span>
+                  </div>
 
-            <div className="flex-1 relative min-h-[22rem]">
-              <textarea
-                ref={scriptTextareaRef}
-                value={state.script}
-                onChange={(event) => setState((prev) => ({
-                  ...prev,
-                  script: event.target.value,
-                }))}
-                placeholder="Digite ou cole seu texto aqui para começar a gerar a locução..."
-                className="w-full h-full bg-surface-low p-8 rounded-2xl border-none focus:ring-1 focus:ring-primary-container/30 text-lg leading-relaxed text-on-surface placeholder:text-on-surface-variant/20 resize-none font-sans transition-all"
-              />
-              <div className="absolute bottom-6 right-8">
-                <div className="text-[10px] font-bold text-on-surface-variant bg-surface/50 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/5">
-                  <span className={estimatedSegmentCount > 1 ? 'text-secondary-container' : 'text-on-surface'}>
-                    {state.script.length.toLocaleString('pt-BR')}
-                  </span> CARACTERES
+                  {filteredHistory.length === 0 ? (
+                    <div className="p-5 rounded-2xl bg-surface-low border border-white/5 text-sm text-on-surface-variant leading-relaxed">
+                      {state.history.length === 0
+                        ? 'Os MP3s gerados aparecem aqui. O clipe mais recente vira a prévia ativa automaticamente.'
+                        : 'Nenhum clipe corresponde à busca atual.'}
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {filteredHistory.map((clip) => (
+                        <React.Fragment key={clip.id}>
+                          <HistoryItem
+                            clip={clip}
+                            onToggle={handleToggleClip}
+                            onDownload={() => downloadClip(clip)}
+                            expanded
+                          />
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-3xl border border-white/5 bg-surface-low p-6 h-fit">
+                  <LibrarySummaryPanel
+                    clip={primaryClip}
+                    onPreview={handlePreview}
+                    onDownload={() => downloadClip(primaryClip)}
+                  />
                 </div>
               </div>
             </div>
-
-            <div className="mt-8 flex justify-between items-center gap-4">
-              <div className="text-sm text-on-surface-variant leading-relaxed">
-                {estimatedSegmentCount > 1
-                  ? `O texto será dividido automaticamente em aproximadamente ${estimatedSegmentCount} partes antes da concatenação final.`
-                  : 'O texto atual será enviado em uma única requisição de síntese.'}
+          ) : activeView === 'vozes' ? (
+            <div className="h-full overflow-y-auto p-8 space-y-6">
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                <InfoCard
+                  title="Vozes carregadas"
+                  value={availableVoices.length.toLocaleString('pt-BR')}
+                  description="Lista completa retornada pelo edge-tts local."
+                />
+                <InfoCard
+                  title="Voz ativa"
+                  value={state.selectedVoice.name}
+                  description={buildVoiceDetails(state.selectedVoice)}
+                />
+                <InfoCard
+                  title="Busca atual"
+                  value={voiceSearch.trim() ? `${filteredVoices.length} resultado(s)` : 'Catálogo completo'}
+                  description={voiceSearch.trim() ? `Filtro aplicado: ${voiceSearch}` : 'Use a busca para filtrar por idioma, gênero ou código.'}
+                />
               </div>
-              <button
-                type="button"
-                onClick={() => downloadClip(primaryClip)}
-                disabled={!primaryClip?.audioUrl}
-                className="px-8 py-4 rounded-xl bg-surface-highest text-secondary border border-secondary/20 hover:bg-secondary/10 transition-all font-bold flex items-center gap-3 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Download size={20} />
-                Exportar MP3
-              </button>
-            </div>
-          </section>
 
-          <section className={`${settingsColSpan} p-8 overflow-y-auto ${activeView !== 'biblioteca' ? '' : ''}`}>
-            {activeView === 'biblioteca' ? (
-              <LibrarySummaryPanel
-                clip={primaryClip}
-                onPreview={handlePreview}
-                onDownload={() => downloadClip(primaryClip)}
-              />
-            ) : activeView === 'vozes' ? (
-              <VoiceCatalogPanel
-                voiceSearch={voiceSearch}
-                onVoiceSearchChange={setVoiceSearch}
-                voiceSearchInputRef={voiceSearchInputRef}
-                filteredVoices={filteredVoices}
-                selectedVoice={state.selectedVoice}
-                onSelectVoice={(voice) => setState((prev) => ({ ...prev, selectedVoice: voice }))}
-                isLoadingVoices={isLoadingVoices}
-                voiceErrorMessage={voiceErrorMessage}
-              />
-            ) : (
-              <div ref={renderPanelRef} className="space-y-10">
-                <CompactVoiceSelector
-                  showVoiceDropdown={showVoiceDropdown}
-                  setShowVoiceDropdown={setShowVoiceDropdown}
-                  selectedVoice={state.selectedVoice}
+              <div className="rounded-3xl border border-white/5 bg-surface-low p-6 h-full min-h-[38rem]">
+                <VoiceCatalogPanel
                   voiceSearch={voiceSearch}
                   onVoiceSearchChange={setVoiceSearch}
-                  filteredVoices={filteredVoices}
-                  onSelectVoice={(voice) => setState((prev) => ({ ...prev, selectedVoice: voice }))}
                   voiceSearchInputRef={voiceSearchInputRef}
+                  filteredVoices={filteredVoices}
+                  selectedVoice={state.selectedVoice}
+                  onSelectVoice={(voice) => setState((prev) => ({ ...prev, selectedVoice: voice }))}
+                  isLoadingVoices={isLoadingVoices}
+                  voiceErrorMessage={voiceErrorMessage}
                 />
+              </div>
+            </div>
+          ) : (
+            <div className="h-full overflow-y-auto p-8">
+              <div ref={renderPanelRef} className="max-w-5xl mx-auto space-y-6">
+                <div>
+                  <h2 className="font-headline text-2xl font-extrabold tracking-tight">Preparar renderização</h2>
+                  <p className="text-sm text-on-surface-variant mt-2">
+                    Ajuste voz, tom e velocidade em uma tela focada na saída final. Quando estiver pronto, gere e exporte o MP3 aqui mesmo.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                  <InfoCard
+                    title="Voz atual"
+                    value={state.selectedVoice.name}
+                    description={buildVoiceDetails(state.selectedVoice)}
+                  />
+                  <InfoCard
+                    title="Saída final"
+                    value={estimatedSegmentCount > 1 ? 'MP3 concatenado' : 'MP3 único'}
+                    description={estimatedSegmentCount > 1 ? 'Os trechos gerados são unidos automaticamente antes do download.' : 'Nenhuma concatenação adicional será necessária.'}
+                    highlight={estimatedSegmentCount > 1}
+                  />
+                  <InfoCard
+                    title="Estimativa"
+                    value={scriptForEstimate ? `~${formatRuntimeMilliseconds(generationRuntime?.estimatedTotalMs ?? plannedGenerationMs)}` : '--:--'}
+                    description={generationRuntime ? 'Tempo estimado da renderização atual.' : 'A estimativa aparece conforme o roteiro cresce.'}
+                    highlight={state.isGenerating}
+                  />
+                </div>
+
+                {state.errorMessage ? (
+                  <div className="p-4 rounded-2xl border border-red-400/20 bg-red-500/10 text-sm text-red-100">
+                    {state.errorMessage}
+                  </div>
+                ) : null}
+
+                {generationRuntime ? (
+                  <GenerationProgressPanel
+                    elapsedMs={generationElapsedMs}
+                    estimatedTotalMs={generationRuntime.estimatedTotalMs}
+                    remainingMs={generationRemainingMs}
+                    characterCount={generationRuntime.characterCount}
+                    segmentCount={generationRuntime.expectedSegments}
+                    progressPercent={generationProgressPercent}
+                    status={generationStatus}
+                    usesLearnedEstimate={generationSamples.length > 0}
+                  />
+                ) : null}
+
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                  <div className="p-6 rounded-3xl bg-surface-low border border-white/5">
+                    <CompactVoiceSelector
+                      showVoiceDropdown={showVoiceDropdown}
+                      setShowVoiceDropdown={setShowVoiceDropdown}
+                      selectedVoice={state.selectedVoice}
+                      voiceSearch={voiceSearch}
+                      onVoiceSearchChange={setVoiceSearch}
+                      filteredVoices={filteredVoices}
+                      onSelectVoice={(voice) => setState((prev) => ({ ...prev, selectedVoice: voice }))}
+                      voiceSearchInputRef={voiceSearchInputRef}
+                    />
+                  </div>
+
+                  <div className="p-6 rounded-3xl bg-surface-low border border-white/5">
+                    <div className="space-y-8">
+                      <Slider
+                        label="Tom"
+                        value={state.pitch}
+                        onChange={(value) => setState((prev) => ({ ...prev, pitch: value }))}
+                        min={-50}
+                        max={50}
+                        unit="Hz"
+                        showSign
+                      />
+                      <Slider
+                        label="Velocidade"
+                        value={state.rate}
+                        onChange={(value) => setState((prev) => ({ ...prev, rate: value }))}
+                        min={0.5}
+                        max={2}
+                        step={0.05}
+                        unit="x"
+                      />
+                    </div>
+                  </div>
+                </div>
 
                 {voiceErrorMessage ? (
                   <div className="p-4 rounded-2xl border border-amber-400/20 bg-amber-500/10 text-xs text-amber-100 leading-relaxed">
@@ -1158,55 +1363,28 @@ export default function App() {
                   </div>
                 ) : null}
 
-                <div className="space-y-8">
-                  <Slider
-                    label="Tom"
-                    value={state.pitch}
-                    onChange={(value) => setState((prev) => ({ ...prev, pitch: value }))}
-                    min={-50}
-                    max={50}
-                    unit="Hz"
-                    showSign
-                  />
-                  <Slider
-                    label="Velocidade"
-                    value={state.rate}
-                    onChange={(value) => setState((prev) => ({ ...prev, rate: value }))}
-                    min={0.5}
-                    max={2}
-                    step={0.05}
-                    unit="x"
-                  />
-                </div>
-
-                {activeView === 'renderizacao' ? (
-                  <div className="grid grid-cols-2 gap-4">
-                    <InfoCard
-                      title="Voz atual"
-                      value={state.selectedVoice.name}
-                      description={buildVoiceDetails(state.selectedVoice)}
-                    />
-                    <InfoCard
-                      title="Saída final"
-                      value={estimatedSegmentCount > 1 ? 'MP3 concatenado' : 'MP3 único'}
-                      description={estimatedSegmentCount > 1 ? 'Os trechos gerados são unidos automaticamente antes do download.' : 'Nenhuma concatenação adicional será necessária.'}
-                      highlight={estimatedSegmentCount > 1}
-                    />
-                  </div>
-                ) : null}
-
-                <div className="p-6 rounded-2xl bg-surface-low border border-white/5 relative overflow-hidden group">
+                <div className="p-6 rounded-3xl bg-surface-low border border-white/5 relative overflow-hidden group">
                   <div className="absolute -right-4 -top-4 w-24 h-24 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-colors" />
-                  <h4 className="text-sm font-bold mb-2">{activeView === 'renderizacao' ? 'Estratégia de renderização' : 'Dica técnica'}</h4>
+                  <h4 className="text-sm font-bold mb-2">Estratégia de renderização</h4>
                   <p className="text-xs text-on-surface-variant leading-relaxed">
-                    {activeView === 'renderizacao'
-                      ? 'Textos longos são quebrados em múltiplas sínteses, depois unidos em um único arquivo final. Isso permite entregar um MP3 completo sem cortar o conteúdo.'
-                      : 'O edge-tts aplica o tom em Hz e a velocidade como porcentagem sobre a voz base. Ajustes sutis costumam soar mais naturais do que extremos.'}
+                    Textos longos são quebrados em múltiplas sínteses, depois unidos em um único arquivo final. Isso permite entregar um MP3 completo sem cortar o conteúdo.
                   </p>
                 </div>
+
+                <div className="flex justify-end">
+                  <GenerateActionGroup
+                    onGenerate={handleGenerate}
+                    onDownload={() => downloadClip(primaryClip)}
+                    isGenerating={state.isGenerating}
+                    canGenerate={Boolean(state.script.trim())}
+                    canDownload={Boolean(primaryClip?.audioUrl)}
+                    generationElapsedMs={generationElapsedMs}
+                    estimateLabel={estimateSummaryLabel}
+                  />
+                </div>
               </div>
-            )}
-          </section>
+            </div>
+          )}
         </main>
 
         <footer className="h-20 px-8 bg-surface-low border-t border-primary-container/10 flex items-center justify-between shadow-2xl">
@@ -1300,6 +1478,14 @@ function SidebarLink({
   );
 }
 
+function HeaderChip({ label }: { label: string }) {
+  return (
+    <div className="px-4 py-2 rounded-full bg-surface-low border border-white/5 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+      {label}
+    </div>
+  );
+}
+
 function InfoCard({
   title,
   value,
@@ -1316,6 +1502,61 @@ function InfoCard({
       <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">{title}</p>
       <p className="text-lg font-bold text-on-surface mb-2">{value}</p>
       <p className="text-xs text-on-surface-variant leading-relaxed">{description}</p>
+    </div>
+  );
+}
+
+function GenerateActionGroup({
+  onGenerate,
+  onDownload,
+  isGenerating,
+  canGenerate,
+  canDownload,
+  generationElapsedMs,
+  estimateLabel,
+}: {
+  onGenerate: () => void;
+  onDownload: () => void;
+  isGenerating: boolean;
+  canGenerate: boolean;
+  canDownload: boolean;
+  generationElapsedMs: number;
+  estimateLabel: string;
+}) {
+  return (
+    <div className="flex flex-col items-end gap-3">
+      <div className="flex flex-wrap justify-end gap-3">
+        <button
+          type="button"
+          onClick={onGenerate}
+          disabled={isGenerating || !canGenerate}
+          className="px-8 py-4 rounded-xl bg-gradient-to-br from-primary-container to-primary text-white font-bold shadow-lg shadow-primary-container/20 hover:shadow-primary-container/40 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        >
+          {isGenerating ? (
+            <>
+              <Loader2 className="animate-spin" size={20} />
+              <span>Gerando {formatRuntimeMilliseconds(generationElapsedMs)}</span>
+            </>
+          ) : (
+            <>
+              <Sparkles size={20} />
+              <span>Gerar áudio</span>
+            </>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={onDownload}
+          disabled={!canDownload}
+          className="px-8 py-4 rounded-xl bg-surface-highest text-secondary border border-secondary/20 hover:bg-secondary/10 transition-all font-bold flex items-center gap-3 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Download size={20} />
+          Exportar MP3
+        </button>
+      </div>
+      <p className="text-[11px] text-on-surface-variant leading-relaxed text-right max-w-md">
+        {estimateLabel}
+      </p>
     </div>
   );
 }
