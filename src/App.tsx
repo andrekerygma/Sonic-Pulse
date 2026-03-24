@@ -24,8 +24,24 @@ import { AppState, AudioClip, VoicePersona } from './types';
 import { FALLBACK_VOICES, INITIAL_HISTORY } from './constants';
 
 const EDGE_TTS_CHUNK_GUIDE_CHARS = 4500;
+const DEFAULT_GENERATION_BASE_MS = 2000;
+const DEFAULT_GENERATION_SEGMENT_MS = 5500;
+const DEFAULT_GENERATION_CHAR_MS = 0.55;
+const MAX_GENERATION_PROGRESS = 96;
 
 type AppView = 'criar' | 'biblioteca' | 'vozes' | 'renderizacao';
+type GenerationSample = {
+  durationMs: number;
+  segmentCount: number;
+  characterCount: number;
+};
+
+type GenerationRuntime = {
+  startedAt: number;
+  estimatedTotalMs: number;
+  expectedSegments: number;
+  characterCount: number;
+};
 
 function polishScriptLocally(script: string) {
   const normalized = script
@@ -47,9 +63,19 @@ function polishScriptLocally(script: string) {
 
 function formatDuration(totalSeconds: number) {
   const roundedSeconds = Math.max(0, Math.round(totalSeconds));
-  const minutes = Math.floor(roundedSeconds / 60);
+  const hours = Math.floor(roundedSeconds / 3600);
+  const minutes = Math.floor((roundedSeconds % 3600) / 60);
   const seconds = (roundedSeconds % 60).toString().padStart(2, '0');
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds}`;
+  }
+
   return `${minutes}:${seconds}`;
+}
+
+function formatRuntimeMilliseconds(totalMilliseconds: number) {
+  return formatDuration(totalMilliseconds / 1000);
 }
 
 function formatTimestamp(date = new Date()) {
@@ -257,6 +283,90 @@ function estimateSegmentCount(script: string) {
   return Math.max(1, Math.ceil(trimmed.length / EDGE_TTS_CHUNK_GUIDE_CHARS));
 }
 
+function estimateGenerationMs(characterCount: number, segmentCount: number, samples: GenerationSample[]) {
+  const safeSegmentCount = Math.max(1, segmentCount);
+  const fallbackEstimate = DEFAULT_GENERATION_BASE_MS
+    + safeSegmentCount * DEFAULT_GENERATION_SEGMENT_MS
+    + characterCount * DEFAULT_GENERATION_CHAR_MS;
+
+  if (samples.length === 0) {
+    return Math.round(fallbackEstimate);
+  }
+
+  const totals = samples.reduce((accumulator, sample) => ({
+    durationMs: accumulator.durationMs + sample.durationMs,
+    segmentCount: accumulator.segmentCount + Math.max(1, sample.segmentCount),
+    characterCount: accumulator.characterCount + Math.max(1, sample.characterCount),
+  }), {
+    durationMs: 0,
+    segmentCount: 0,
+    characterCount: 0,
+  });
+
+  const averageMsPerSegment = totals.durationMs / Math.max(1, totals.segmentCount);
+  const averageMsPerCharacter = totals.durationMs / Math.max(1, totals.characterCount);
+  const learnedEstimate = DEFAULT_GENERATION_BASE_MS
+    + safeSegmentCount * Math.max(3200, averageMsPerSegment * 0.78)
+    + characterCount * Math.max(0.12, averageMsPerCharacter * 0.28);
+
+  return Math.round(Math.max(fallbackEstimate * 0.85, learnedEstimate));
+}
+
+function calculateGenerationProgress(elapsedMs: number, estimatedTotalMs: number) {
+  if (estimatedTotalMs <= 0) {
+    return 8;
+  }
+
+  if (elapsedMs <= estimatedTotalMs) {
+    return Math.min(
+      MAX_GENERATION_PROGRESS,
+      8 + (elapsedMs / estimatedTotalMs) * (MAX_GENERATION_PROGRESS - 8),
+    );
+  }
+
+  const overflowRatio = Math.min(1, (elapsedMs - estimatedTotalMs) / estimatedTotalMs);
+  return Math.min(99, MAX_GENERATION_PROGRESS + overflowRatio * 3);
+}
+
+function buildGenerationStatus(elapsedMs: number, estimatedTotalMs: number, segmentCount: number) {
+  const safeSegmentCount = Math.max(1, segmentCount);
+  const progressRatio = estimatedTotalMs > 0 ? elapsedMs / estimatedTotalMs : 0;
+
+  if (safeSegmentCount === 1) {
+    if (progressRatio < 0.2) {
+      return 'Preparando a síntese e enviando o texto para a voz selecionada.';
+    }
+
+    if (progressRatio < 0.85) {
+      return 'Convertendo o texto em áudio e montando o MP3 final.';
+    }
+
+    if (progressRatio < 1.1) {
+      return 'Finalizando o arquivo e preparando a reprodução.';
+    }
+
+    return 'Ainda finalizando o MP3. A resposta deve chegar em instantes.';
+  }
+
+  if (progressRatio < 0.15) {
+    return `Preparando ${safeSegmentCount} trechos para síntese antes da concatenação final.`;
+  }
+
+  if (progressRatio < 0.85) {
+    const approximateSegment = Math.min(
+      safeSegmentCount,
+      Math.max(1, Math.ceil(Math.min(progressRatio, 0.98) * safeSegmentCount)),
+    );
+    return `Processando aproximadamente o trecho ${approximateSegment} de ${safeSegmentCount}.`;
+  }
+
+  if (progressRatio < 1.1) {
+    return 'Unindo os trechos renderizados e fechando o MP3 final.';
+  }
+
+  return 'Ainda fechando o arquivo final. Em textos longos isso pode levar alguns segundos extras.';
+}
+
 export default function App() {
   const [state, setState] = useState<AppState>({
     script: '',
@@ -276,6 +386,9 @@ export default function App() {
   const [isLoadingVoices, setIsLoadingVoices] = useState(false);
   const [isPolishing, setIsPolishing] = useState(false);
   const [showVoiceDropdown, setShowVoiceDropdown] = useState(false);
+  const [generationSamples, setGenerationSamples] = useState<GenerationSample[]>([]);
+  const [generationRuntime, setGenerationRuntime] = useState<GenerationRuntime | null>(null);
+  const [generationElapsedMs, setGenerationElapsedMs] = useState(0);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -292,6 +405,24 @@ export default function App() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!generationRuntime) {
+      setGenerationElapsedMs(0);
+      return;
+    }
+
+    const updateElapsed = () => {
+      setGenerationElapsedMs(Date.now() - generationRuntime.startedAt);
+    };
+
+    updateElapsed();
+    const intervalId = window.setInterval(updateElapsed, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [generationRuntime]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -355,6 +486,19 @@ export default function App() {
   const latestGeneratedClip = state.history.find((clip) => clip.audioUrl) ?? null;
   const primaryClip = activeClip?.audioUrl ? activeClip : latestGeneratedClip;
   const estimatedSegmentCount = estimateSegmentCount(state.script);
+  const scriptForEstimate = state.script.trim();
+  const plannedGenerationMs = scriptForEstimate
+    ? estimateGenerationMs(scriptForEstimate.length, estimatedSegmentCount, generationSamples)
+    : 0;
+  const generationProgressPercent = generationRuntime
+    ? calculateGenerationProgress(generationElapsedMs, generationRuntime.estimatedTotalMs)
+    : 0;
+  const generationStatus = generationRuntime
+    ? buildGenerationStatus(generationElapsedMs, generationRuntime.estimatedTotalMs, generationRuntime.expectedSegments)
+    : '';
+  const generationRemainingMs = generationRuntime
+    ? Math.max(0, generationRuntime.estimatedTotalMs - generationElapsedMs)
+    : 0;
   const filteredVoices = availableVoices.filter((voice) => {
     const search = voiceSearch.trim().toLowerCase();
 
@@ -604,11 +748,20 @@ export default function App() {
       return;
     }
 
+    const startedAt = Date.now();
+    const estimatedTotalMs = estimateGenerationMs(script.length, estimateSegmentCount(script), generationSamples);
+
     setState((prev) => ({
       ...prev,
       isGenerating: true,
       errorMessage: null,
     }));
+    setGenerationRuntime({
+      startedAt,
+      estimatedTotalMs,
+      expectedSegments: estimateSegmentCount(script),
+      characterCount: script.length,
+    });
 
     try {
       const response = await fetchApi('/api/tts/generate', {
@@ -642,6 +795,9 @@ export default function App() {
       const durationInSeconds = await readAudioDuration(audioUrl);
       const segmentCount = Number(response.headers.get('X-Sonic-Pulse-Chunk-Count') ?? '1');
       const characterCount = Number(response.headers.get('X-Sonic-Pulse-Character-Count') ?? String(script.length));
+      const safeSegmentCount = Number.isFinite(segmentCount) ? segmentCount : estimateSegmentCount(script);
+      const safeCharacterCount = Number.isFinite(characterCount) ? characterCount : script.length;
+      const generationDurationMs = Date.now() - startedAt;
       const nextClip: AudioClip = {
         id: createClipId(),
         title: buildClipTitle(script),
@@ -651,9 +807,18 @@ export default function App() {
         isPlaying: true,
         audioUrl,
         voiceCode: state.selectedVoice.code,
-        segmentCount: Number.isFinite(segmentCount) ? segmentCount : 1,
-        characterCount: Number.isFinite(characterCount) ? characterCount : script.length,
+        segmentCount: safeSegmentCount,
+        characterCount: safeCharacterCount,
       };
+
+      setGenerationSamples((prev) => [
+        ...prev.slice(-5),
+        {
+          durationMs: generationDurationMs,
+          segmentCount: safeSegmentCount,
+          characterCount: safeCharacterCount,
+        },
+      ]);
 
       const audio = audioRef.current;
 
@@ -697,6 +862,8 @@ export default function App() {
         isGenerating: false,
         errorMessage: getErrorMessage(error),
       }));
+    } finally {
+      setGenerationRuntime(null);
     }
   };
 
@@ -755,8 +922,20 @@ export default function App() {
             disabled={state.isGenerating || !state.script.trim()}
             className="w-full py-4 rounded-xl bg-gradient-to-br from-primary-container to-primary text-white font-bold shadow-lg shadow-primary-container/20 hover:shadow-primary-container/40 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            {state.isGenerating ? <Loader2 className="animate-spin" size={20} /> : 'Gerar áudio'}
+            {state.isGenerating ? (
+              <>
+                <Loader2 className="animate-spin" size={20} />
+                <span>Gerando {formatRuntimeMilliseconds(generationElapsedMs)}</span>
+              </>
+            ) : 'Gerar áudio'}
           </button>
+          <p className="mt-3 text-[11px] text-center text-on-surface-variant leading-relaxed">
+            {generationRuntime
+              ? `Estimativa total desta renderização: ~${formatRuntimeMilliseconds(generationRuntime.estimatedTotalMs)}`
+              : scriptForEstimate
+                ? `Estimativa atual: ~${formatRuntimeMilliseconds(plannedGenerationMs)}`
+                : 'A estimativa de tempo aparece aqui quando houver texto para renderizar.'}
+          </p>
         </div>
       </aside>
 
@@ -858,7 +1037,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-6">
               <InfoCard
                 title="Caracteres"
                 value={state.script.length.toLocaleString('pt-BR')}
@@ -871,12 +1050,37 @@ export default function App() {
                 description={estimatedSegmentCount > 1 ? 'O backend fará várias requisições e juntará tudo em um único MP3.' : 'O texto atual cabe em uma única requisição.'}
                 highlight={estimatedSegmentCount > 1}
               />
+              <InfoCard
+                title="Estimativa"
+                value={scriptForEstimate ? `~${formatRuntimeMilliseconds(generationRuntime?.estimatedTotalMs ?? plannedGenerationMs)}` : '--:--'}
+                description={
+                  generationRuntime
+                    ? 'Estimativa da renderização em andamento, com cronômetro ativo durante o processamento.'
+                    : generationSamples.length > 0
+                      ? 'Baseada no tamanho do texto e no ritmo das últimas renderizações locais.'
+                      : 'Baseada no tamanho do texto e na quantidade prevista de trechos.'
+                }
+                highlight={state.isGenerating}
+              />
             </div>
 
             {state.errorMessage ? (
               <div className="mb-6 p-4 rounded-2xl border border-red-400/20 bg-red-500/10 text-sm text-red-100">
                 {state.errorMessage}
               </div>
+            ) : null}
+
+            {generationRuntime ? (
+              <GenerationProgressPanel
+                elapsedMs={generationElapsedMs}
+                estimatedTotalMs={generationRuntime.estimatedTotalMs}
+                remainingMs={generationRemainingMs}
+                characterCount={generationRuntime.characterCount}
+                segmentCount={generationRuntime.expectedSegments}
+                progressPercent={generationProgressPercent}
+                status={generationStatus}
+                usesLearnedEstimate={generationSamples.length > 0}
+              />
             ) : null}
 
             <div className="flex-1 relative min-h-[22rem]">
@@ -1112,6 +1316,80 @@ function InfoCard({
       <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">{title}</p>
       <p className="text-lg font-bold text-on-surface mb-2">{value}</p>
       <p className="text-xs text-on-surface-variant leading-relaxed">{description}</p>
+    </div>
+  );
+}
+
+function GenerationProgressPanel({
+  elapsedMs,
+  estimatedTotalMs,
+  remainingMs,
+  characterCount,
+  segmentCount,
+  progressPercent,
+  status,
+  usesLearnedEstimate,
+}: {
+  elapsedMs: number;
+  estimatedTotalMs: number;
+  remainingMs: number;
+  characterCount: number;
+  segmentCount: number;
+  progressPercent: number;
+  status: string;
+  usesLearnedEstimate: boolean;
+}) {
+  return (
+    <div className="mb-6 p-6 rounded-3xl border border-primary-container/20 bg-gradient-to-br from-primary-container/12 via-surface-low to-secondary-container/10 shadow-lg shadow-primary-container/10">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-primary-container">Renderização em andamento</p>
+          <h3 className="text-lg font-bold mt-2">Seu áudio está sendo preparado</h3>
+          <p className="text-sm text-on-surface-variant mt-2 leading-relaxed">{status}</p>
+        </div>
+        <div className="h-12 w-12 rounded-2xl bg-surface/60 border border-white/10 flex items-center justify-center shrink-0">
+          <Loader2 className="animate-spin text-primary-container" size={22} />
+        </div>
+      </div>
+
+      <div className="mt-5">
+        <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">
+          <span>Processamento</span>
+          <span>{Math.round(progressPercent)}%</span>
+        </div>
+        <div className="h-2 rounded-full bg-surface-high overflow-hidden">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-primary-container via-primary to-secondary-container transition-[width] duration-700"
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+      </div>
+
+      <div className="mt-5 grid grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className="p-4 rounded-2xl bg-surface/70 border border-white/5">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Tempo decorrido</p>
+          <p className="text-lg font-bold">{formatRuntimeMilliseconds(elapsedMs)}</p>
+        </div>
+        <div className="p-4 rounded-2xl bg-surface/70 border border-white/5">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Estimativa total</p>
+          <p className="text-lg font-bold">~{formatRuntimeMilliseconds(estimatedTotalMs)}</p>
+        </div>
+        <div className="p-4 rounded-2xl bg-surface/70 border border-white/5">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Restante aprox.</p>
+          <p className="text-lg font-bold">{remainingMs > 0 ? `~${formatRuntimeMilliseconds(remainingMs)}` : 'Finalizando'}</p>
+        </div>
+        <div className="p-4 rounded-2xl bg-surface/70 border border-white/5">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Carga atual</p>
+          <p className="text-lg font-bold">{segmentCount} trecho(s)</p>
+          <p className="text-[11px] text-on-surface-variant mt-1">{characterCount.toLocaleString('pt-BR')} caracteres</p>
+        </div>
+      </div>
+
+      <p className="mt-4 text-[11px] text-on-surface-variant leading-relaxed">
+        {usesLearnedEstimate
+          ? 'A estimativa considera o tamanho do texto e também o ritmo das últimas renderizações feitas nesta sessão.'
+          : 'A estimativa considera o tamanho do texto e a quantidade prevista de trechos antes da concatenação final.'}
+      </p>
     </div>
   );
 }
