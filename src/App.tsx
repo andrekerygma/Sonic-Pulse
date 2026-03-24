@@ -894,7 +894,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen bg-surface text-on-surface overflow-hidden font-sans">
+    <div className="flex min-h-screen flex-col bg-surface text-on-surface overflow-x-hidden font-sans xl:h-screen xl:flex-row xl:overflow-hidden">
       <input
         ref={fileInputRef}
         type="file"
@@ -913,20 +913,20 @@ export default function App() {
         onEnded={() => syncActiveClipFromAudio(true)}
       />
 
-      <aside className="w-64 flex flex-col py-8 px-4 border-r border-white/5">
-        <div className="mb-10 px-2">
+      <aside className="w-full shrink-0 border-b border-white/5 px-4 py-4 xl:w-64 xl:border-b-0 xl:border-r xl:px-4 xl:py-8">
+        <div className="mb-5 px-1 xl:mb-10 xl:px-2">
           <h1 className="text-xl font-extrabold tracking-tight text-primary-container font-headline">Sonic Pulse</h1>
           <p className="text-xs text-on-surface-variant font-medium mt-1">Estúdio de voz local</p>
         </div>
 
-        <nav className="flex-1 space-y-2">
+        <nav className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-1 xl:gap-2">
           <SidebarLink icon={<PlusCircle size={20} />} label="Criar" active={activeView === 'criar'} onClick={() => handleSelectView('criar')} />
           <SidebarLink icon={<Library size={20} />} label="Biblioteca" active={activeView === 'biblioteca'} onClick={() => handleSelectView('biblioteca')} />
           <SidebarLink icon={<Mic2 size={20} />} label="Vozes" active={activeView === 'vozes'} onClick={() => handleSelectView('vozes')} />
           <SidebarLink icon={<Settings2 size={20} />} label="Renderização" active={activeView === 'renderizacao'} onClick={() => handleSelectView('renderizacao')} />
         </nav>
 
-        <div className="mt-auto pt-6">
+        <div className="mt-4 xl:mt-auto xl:pt-6">
           <div className="p-4 rounded-2xl bg-surface-low border border-white/5">
             <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Status local</p>
             <p className="text-sm font-bold text-on-surface">
@@ -940,15 +940,16 @@ export default function App() {
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-16 flex items-center justify-between px-8 border-b border-white/5 bg-surface/80 backdrop-blur-md z-10">
-          <div className="flex items-center gap-2 text-sm">
+        <header className="border-b border-white/5 bg-surface/80 px-4 py-4 backdrop-blur-md z-10 sm:px-6 xl:px-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-2 text-sm min-w-0">
             <span className="text-on-surface-variant">Projeto /</span>
-            <span className="font-medium">{activeViewTitle}</span>
+            <span className="font-medium truncate">{activeViewTitle}</span>
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between lg:justify-end lg:gap-6">
             {activeView === 'biblioteca' ? (
-              <div className="relative">
+              <div className="relative w-full sm:w-auto">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={16} />
                 <input
                   ref={topSearchInputRef}
@@ -956,7 +957,7 @@ export default function App() {
                   value={librarySearch}
                   onChange={(event) => setLibrarySearch(event.target.value)}
                   placeholder="Buscar clipes por título, voz ou data..."
-                  className="bg-surface-low border-none rounded-full py-2 pl-10 pr-4 text-sm focus:ring-1 focus:ring-primary-container w-72 transition-all"
+                  className="bg-surface-low border-none rounded-full py-2 pl-10 pr-4 text-sm focus:ring-1 focus:ring-primary-container w-full sm:w-72 transition-all"
                 />
               </div>
             ) : activeView === 'vozes' ? (
@@ -966,7 +967,7 @@ export default function App() {
             ) : (
               <HeaderChip label={scriptForEstimate ? `Estimativa ~${formatRuntimeMilliseconds(generationRuntime?.estimatedTotalMs ?? plannedGenerationMs)}` : 'Pronto para criar um novo áudio'} />
             )}
-            <div className="flex items-center gap-4 text-on-surface-variant">
+            <div className="flex items-center justify-between gap-4 text-on-surface-variant sm:justify-end">
               <button type="button" className="hover:text-primary transition-colors"><Bell size={20} /></button>
               <button type="button" className="hover:text-primary transition-colors"><HelpCircle size={20} /></button>
               <div className="h-8 w-8 rounded-full overflow-hidden border border-white/10">
@@ -979,12 +980,13 @@ export default function App() {
               </div>
             </div>
           </div>
+          </div>
         </header>
 
-        <main className="flex-1 overflow-hidden">
+        <main className="flex-1 overflow-y-auto xl:overflow-hidden">
           {activeView === 'criar' ? (
-            <div className="grid grid-cols-12 h-full overflow-hidden">
-              <section className="col-span-3 p-6 overflow-y-auto border-r border-white/5">
+            <div className="grid grid-cols-1 xl:grid-cols-12 xl:h-full xl:overflow-hidden">
+              <section className="order-3 border-t border-white/5 p-4 sm:p-6 xl:order-1 xl:col-span-3 xl:border-t-0 xl:border-r xl:overflow-y-auto">
                 <div className="flex items-center justify-between mb-6">
                   <div>
                     <h3 className="font-headline text-lg font-bold">Histórico recente</h3>
@@ -1014,15 +1016,15 @@ export default function App() {
                 )}
               </section>
 
-              <section className="col-span-6 p-10 flex flex-col overflow-y-auto border-r border-white/5">
-                <div className="flex items-center justify-between mb-6">
+              <section className="order-1 border-b border-white/5 p-4 sm:p-6 xl:order-2 xl:col-span-6 xl:border-b-0 xl:border-r xl:p-10 xl:overflow-y-auto flex flex-col">
+                <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <h2 className="font-headline text-2xl font-extrabold tracking-tight">Escreva o roteiro</h2>
                     <p className="text-sm text-on-surface-variant mt-2">
                       Sem limite rígido de 5.000 caracteres. Se o texto for longo, o app divide em partes e monta um único MP3 final automaticamente.
                     </p>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex flex-wrap items-center gap-4">
                     <button
                       onClick={handlePolish}
                       disabled={isPolishing || !state.script.trim()}
@@ -1038,7 +1040,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-6">
                   <InfoCard
                     title="Caracteres"
                     value={state.script.length.toLocaleString('pt-BR')}
@@ -1084,7 +1086,7 @@ export default function App() {
                   />
                 ) : null}
 
-                <div className="flex-1 relative min-h-[22rem]">
+                <div className="relative min-h-[18rem] flex-1 sm:min-h-[22rem]">
                   <textarea
                     ref={scriptTextareaRef}
                     value={state.script}
@@ -1093,9 +1095,9 @@ export default function App() {
                       script: event.target.value,
                     }))}
                     placeholder="Digite ou cole seu texto aqui para começar a gerar a locução..."
-                    className="w-full h-full bg-surface-low p-8 rounded-2xl border-none focus:ring-1 focus:ring-primary-container/30 text-lg leading-relaxed text-on-surface placeholder:text-on-surface-variant/20 resize-none font-sans transition-all"
+                    className="w-full h-full bg-surface-low p-5 sm:p-6 xl:p-8 rounded-2xl border-none focus:ring-1 focus:ring-primary-container/30 text-base sm:text-lg leading-relaxed text-on-surface placeholder:text-on-surface-variant/20 resize-none font-sans transition-all"
                   />
-                  <div className="absolute bottom-6 right-8">
+                  <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 xl:right-8">
                     <div className="text-[10px] font-bold text-on-surface-variant bg-surface/50 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/5">
                       <span className={estimatedSegmentCount > 1 ? 'text-secondary-container' : 'text-on-surface'}>
                         {state.script.length.toLocaleString('pt-BR')}
@@ -1104,8 +1106,8 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="mt-8 flex justify-between items-end gap-6">
-                  <div className="text-sm text-on-surface-variant leading-relaxed max-w-xl">
+                <div className="mt-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between lg:gap-6">
+                  <div className="max-w-xl text-sm text-on-surface-variant leading-relaxed">
                     {estimatedSegmentCount > 1
                       ? `O texto será dividido automaticamente em aproximadamente ${estimatedSegmentCount} partes antes da concatenação final.`
                       : 'O texto atual será enviado em uma única requisição de síntese.'}
@@ -1122,7 +1124,7 @@ export default function App() {
                 </div>
               </section>
 
-              <section className="col-span-3 p-8 overflow-y-auto">
+              <section className="order-2 p-4 sm:p-6 xl:order-3 xl:col-span-3 xl:p-8 xl:overflow-y-auto">
                 <div ref={renderPanelRef} className="space-y-10">
                   <CompactVoiceSelector
                     showVoiceDropdown={showVoiceDropdown}
@@ -1173,8 +1175,8 @@ export default function App() {
               </section>
             </div>
           ) : activeView === 'biblioteca' ? (
-            <div className="h-full overflow-y-auto p-8 space-y-6">
-              <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+            <div className="h-full overflow-y-auto p-4 sm:p-6 xl:p-8 space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                 <InfoCard
                   title="Clipes"
                   value={state.history.length.toLocaleString('pt-BR')}
@@ -1192,7 +1194,7 @@ export default function App() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.85fr)] gap-6">
+              <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.85fr)] gap-6">
                 <div className="rounded-3xl border border-white/5 bg-surface-low/40 p-6">
                   <div className="flex items-center justify-between mb-6">
                     <div>
@@ -1238,8 +1240,8 @@ export default function App() {
               </div>
             </div>
           ) : activeView === 'vozes' ? (
-            <div className="h-full overflow-y-auto p-8 space-y-6">
-              <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+            <div className="h-full overflow-y-auto p-4 sm:p-6 xl:p-8 space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                 <InfoCard
                   title="Vozes carregadas"
                   value={availableVoices.length.toLocaleString('pt-BR')}
@@ -1257,7 +1259,7 @@ export default function App() {
                 />
               </div>
 
-              <div className="rounded-3xl border border-white/5 bg-surface-low p-6 h-full min-h-[38rem]">
+              <div className="rounded-3xl border border-white/5 bg-surface-low p-4 sm:p-6 h-full min-h-[28rem] lg:min-h-[38rem]">
                 <VoiceCatalogPanel
                   voiceSearch={voiceSearch}
                   onVoiceSearchChange={setVoiceSearch}
@@ -1271,7 +1273,7 @@ export default function App() {
               </div>
             </div>
           ) : (
-            <div className="h-full overflow-y-auto p-8">
+            <div className="h-full overflow-y-auto p-4 sm:p-6 xl:p-8">
               <div ref={renderPanelRef} className="max-w-5xl mx-auto space-y-6">
                 <div>
                   <h2 className="font-headline text-2xl font-extrabold tracking-tight">Preparar renderização</h2>
@@ -1280,7 +1282,7 @@ export default function App() {
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                   <InfoCard
                     title="Voz atual"
                     value={state.selectedVoice.name}
@@ -1319,8 +1321,8 @@ export default function App() {
                   />
                 ) : null}
 
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                  <div className="p-6 rounded-3xl bg-surface-low border border-white/5">
+                <div className="grid grid-cols-1 2xl:grid-cols-2 gap-6">
+                  <div className="p-4 sm:p-6 rounded-3xl bg-surface-low border border-white/5">
                     <CompactVoiceSelector
                       showVoiceDropdown={showVoiceDropdown}
                       setShowVoiceDropdown={setShowVoiceDropdown}
@@ -1333,7 +1335,7 @@ export default function App() {
                     />
                   </div>
 
-                  <div className="p-6 rounded-3xl bg-surface-low border border-white/5">
+                  <div className="p-4 sm:p-6 rounded-3xl bg-surface-low border border-white/5">
                     <div className="space-y-8">
                       <Slider
                         label="Tom"
@@ -1371,7 +1373,7 @@ export default function App() {
                   </p>
                 </div>
 
-                <div className="flex justify-end">
+                <div className="flex justify-stretch sm:justify-end">
                   <GenerateActionGroup
                     onGenerate={handleGenerate}
                     onDownload={() => downloadClip(primaryClip)}
@@ -1387,8 +1389,9 @@ export default function App() {
           )}
         </main>
 
-        <footer className="h-20 px-8 bg-surface-low border-t border-primary-container/10 flex items-center justify-between shadow-2xl">
-          <div className="flex items-center gap-4 w-1/4">
+        <footer className="border-t border-primary-container/10 bg-surface-low px-4 py-4 shadow-2xl sm:px-6 xl:px-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-4 lg:w-1/3">
             <div className="h-10 w-10 bg-surface-high rounded-lg flex items-center justify-center">
               <div className="flex items-end gap-0.5 h-4">
                 <motion.div animate={{ height: [4, 12, 6, 14, 4] }} transition={{ repeat: Infinity, duration: 1 }} className="w-1 bg-primary rounded-full" />
@@ -1396,15 +1399,15 @@ export default function App() {
                 <motion.div animate={{ height: [12, 6, 4, 10, 12] }} transition={{ repeat: Infinity, duration: 0.8 }} className="w-1 bg-primary rounded-full" />
               </div>
             </div>
-            <div>
-              <p className="text-xs font-bold">{primaryClip?.title || 'Nenhum áudio gerado ainda'}</p>
+            <div className="min-w-0">
+              <p className="text-xs font-bold truncate">{primaryClip?.title || 'Nenhum áudio gerado ainda'}</p>
               <p className="text-[10px] text-on-surface-variant uppercase tracking-widest font-bold">
                 {primaryClip ? `${primaryClip.voiceCode} · ${primaryClip.duration} · ${primaryClip.segmentCount} parte(s)` : 'Pronto para gerar'}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-8">
+          <div className="flex items-center justify-center gap-8">
             <button
               type="button"
               disabled
@@ -1429,7 +1432,7 @@ export default function App() {
             </button>
           </div>
 
-          <div className="flex items-center gap-6 w-1/4 justify-end">
+          <div className="flex flex-wrap items-center gap-3 sm:gap-6 lg:w-1/3 lg:justify-end">
             <button
               type="button"
               onClick={handlePreview}
@@ -1448,6 +1451,7 @@ export default function App() {
               <Download size={14} />
               Baixar
             </button>
+          </div>
           </div>
         </footer>
       </div>
@@ -1470,17 +1474,17 @@ function SidebarLink({
     <button
       type="button"
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${active ? 'text-primary-container font-bold bg-surface-high/50 border-r-2 border-primary-container' : 'text-on-surface-variant/60 hover:bg-surface-high'}`}
+      className={`w-full flex items-center justify-center gap-2 px-3 py-3 rounded-xl text-center transition-all duration-200 group xl:justify-start xl:gap-3 xl:px-4 ${active ? 'text-primary-container font-bold bg-surface-high/50 border-b-2 border-primary-container xl:border-b-0 xl:border-r-2' : 'text-on-surface-variant/60 hover:bg-surface-high'}`}
     >
       <span className={`${active ? 'text-primary-container' : 'group-hover:text-on-surface'}`}>{icon}</span>
-      <span className="text-sm">{label}</span>
+      <span className="text-xs sm:text-sm">{label}</span>
     </button>
   );
 }
 
 function HeaderChip({ label }: { label: string }) {
   return (
-    <div className="px-4 py-2 rounded-full bg-surface-low border border-white/5 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+    <div className="w-full rounded-full bg-surface-low border border-white/5 px-4 py-2 text-center text-[11px] font-bold uppercase tracking-widest text-on-surface-variant sm:w-auto sm:text-xs">
       {label}
     </div>
   );
@@ -1524,13 +1528,13 @@ function GenerateActionGroup({
   estimateLabel: string;
 }) {
   return (
-    <div className="flex flex-col items-end gap-3">
-      <div className="flex flex-wrap justify-end gap-3">
+    <div className="flex w-full flex-col gap-3 sm:w-auto sm:items-end">
+      <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
         <button
           type="button"
           onClick={onGenerate}
           disabled={isGenerating || !canGenerate}
-          className="px-8 py-4 rounded-xl bg-gradient-to-br from-primary-container to-primary text-white font-bold shadow-lg shadow-primary-container/20 hover:shadow-primary-container/40 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-primary-container to-primary px-6 py-4 font-bold text-white shadow-lg shadow-primary-container/20 transition-all active:scale-95 hover:shadow-primary-container/40 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:px-8"
         >
           {isGenerating ? (
             <>
@@ -1548,13 +1552,13 @@ function GenerateActionGroup({
           type="button"
           onClick={onDownload}
           disabled={!canDownload}
-          className="px-8 py-4 rounded-xl bg-surface-highest text-secondary border border-secondary/20 hover:bg-secondary/10 transition-all font-bold flex items-center gap-3 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex w-full items-center justify-center gap-3 rounded-xl border border-secondary/20 bg-surface-highest px-6 py-4 font-bold text-secondary transition-all active:scale-95 hover:bg-secondary/10 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:px-8"
         >
           <Download size={20} />
           Exportar MP3
         </button>
       </div>
-      <p className="text-[11px] text-on-surface-variant leading-relaxed text-right max-w-md">
+      <p className="max-w-md text-[11px] leading-relaxed text-on-surface-variant text-left sm:text-right">
         {estimateLabel}
       </p>
     </div>
@@ -1581,8 +1585,8 @@ function GenerationProgressPanel({
   usesLearnedEstimate: boolean;
 }) {
   return (
-    <div className="mb-6 p-6 rounded-3xl border border-primary-container/20 bg-gradient-to-br from-primary-container/12 via-surface-low to-secondary-container/10 shadow-lg shadow-primary-container/10">
-      <div className="flex items-start justify-between gap-4">
+    <div className="mb-6 rounded-3xl border border-primary-container/20 bg-gradient-to-br from-primary-container/12 via-surface-low to-secondary-container/10 p-4 shadow-lg shadow-primary-container/10 sm:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-primary-container">Renderização em andamento</p>
           <h3 className="text-lg font-bold mt-2">Seu áudio está sendo preparado</h3>
@@ -1606,7 +1610,7 @@ function GenerationProgressPanel({
         </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className="p-4 rounded-2xl bg-surface/70 border border-white/5">
           <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Tempo decorrido</p>
           <p className="text-lg font-bold">{formatRuntimeMilliseconds(elapsedMs)}</p>
@@ -1708,7 +1712,7 @@ function CompactVoiceSelector({
                 </p>
               </div>
 
-              <div className="max-h-[24rem] overflow-y-auto">
+              <div className="max-h-[18rem] overflow-y-auto sm:max-h-[24rem]">
                 {filteredVoices.length > 0 ? (
                   filteredVoices.map((voice) => (
                     <button
@@ -1854,7 +1858,7 @@ function LibrarySummaryPanel({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <button
           type="button"
           onClick={onPreview}
