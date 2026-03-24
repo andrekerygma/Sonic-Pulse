@@ -39,6 +39,19 @@ function sanitizePitch(value) {
 
 const app = express();
 
+app.use((request, response, next) => {
+  response.setHeader('Access-Control-Allow-Origin', '*');
+  response.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (request.method === 'OPTIONS') {
+    response.status(204).end();
+    return;
+  }
+
+  next();
+});
+
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/api/tts/status', async (_request, response) => {
@@ -120,9 +133,11 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 const port = Number(process.env.PORT ?? (process.env.NODE_ENV === 'production' ? 3000 : 3001));
+const host = process.env.HOST ?? '0.0.0.0';
 
-app.listen(port, async () => {
-  console.log(`[server] API do Sonic Pulse em execução em http://localhost:${port}`);
+app.listen(port, host, async () => {
+  const publicHost = host === '0.0.0.0' ? 'localhost' : host;
+  console.log(`[server] API do Sonic Pulse em execução em http://${publicHost}:${port}`);
 
   try {
     const status = await getEdgeTtsStatus(rootDir);
