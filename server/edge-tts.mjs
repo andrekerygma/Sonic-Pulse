@@ -389,6 +389,24 @@ async function concatenateAudioFiles(tempDir, inputPaths, outputPath) {
   }
 }
 
+const PARALLEL_CONCURRENCY = 3;
+
+async function runWithConcurrencyLimit(tasks, limit) {
+  const results = new Array(tasks.length);
+  let nextIndex = 0;
+
+  async function runNext() {
+    while (nextIndex < tasks.length) {
+      const index = nextIndex++;
+      results[index] = await tasks[index]();
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, () => runNext());
+  await Promise.all(workers);
+  return results;
+}
+
 export async function generateSpeech(rootDir, options) {
   const candidate = await resolveEdgeTts(rootDir);
   const tempDir = await mkdtemp(path.join(os.tmpdir(), 'sonic-pulse-'));
@@ -396,16 +414,18 @@ export async function generateSpeech(rootDir, options) {
   const chunks = splitTextIntoChunks(options.text);
 
   try {
-    const inputPaths = [];
+    const inputPaths = chunks.map((_chunk, index) =>
+      path.join(tempDir, `speech-part-${String(index).padStart(3, '0')}.mp3`),
+    );
 
-    for (const [index, chunk] of chunks.entries()) {
-      const chunkPath = path.join(tempDir, `speech-part-${String(index).padStart(3, '0')}.mp3`);
-      await generateSpeechChunk(candidate.command, {
+    const tasks = chunks.map((chunk, index) => () =>
+      generateSpeechChunk(candidate.command, {
         ...options,
         text: chunk,
-      }, chunkPath);
-      inputPaths.push(chunkPath);
-    }
+      }, inputPaths[index]),
+    );
+
+    await runWithConcurrencyLimit(tasks, PARALLEL_CONCURRENCY);
 
     const audioBuffer = await concatenateAudioFiles(tempDir, inputPaths, outputPath);
     return {

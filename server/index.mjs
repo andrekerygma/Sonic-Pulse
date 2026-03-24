@@ -8,6 +8,36 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const distDir = path.join(rootDir, 'dist');
 
+const MAX_TEXT_LENGTH = 100_000;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX_REQUESTS = 5;
+
+// Simple in-memory rate limiter (no external deps)
+const rateLimitMap = new Map();
+
+function isRateLimited(ip) {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+
+  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
+    rateLimitMap.set(ip, { windowStart: now, count: 1 });
+    return false;
+  }
+
+  entry.count += 1;
+  return entry.count > RATE_LIMIT_MAX_REQUESTS;
+}
+
+// Periodically clean stale entries
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of rateLimitMap) {
+    if (now - entry.windowStart > RATE_LIMIT_WINDOW_MS * 2) {
+      rateLimitMap.delete(ip);
+    }
+  }
+}, RATE_LIMIT_WINDOW_MS * 2);
+
 function formatFilename(text) {
   const slug = text
     .normalize('NFD')
@@ -39,8 +69,21 @@ function sanitizePitch(value) {
 
 const app = express();
 
+// CORS: restrict to known dev origins, configurable via env
+const allowedOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim())
+  : ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001'];
+
 app.use((request, response, next) => {
-  response.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = request.headers.origin;
+
+  if (origin && allowedOrigins.includes(origin)) {
+    response.setHeader('Access-Control-Allow-Origin', origin);
+  } else if (!origin) {
+    // Same-origin requests or non-browser clients
+    response.setHeader('Access-Control-Allow-Origin', allowedOrigins[0]);
+  }
+
   response.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -87,10 +130,23 @@ app.get('/api/tts/voices', async (_request, response) => {
 });
 
 app.post('/api/tts/generate', async (request, response) => {
+  // Rate limiting
+  const clientIp = request.ip || request.socket.remoteAddress || 'unknown';
+  if (isRateLimited(clientIp)) {
+    response.status(429).json({ error: 'Limite de requisições excedido. Aguarde um minuto antes de tentar novamente.' });
+    return;
+  }
+
   const text = typeof request.body?.text === 'string' ? request.body.text.trim() : '';
 
   if (!text) {
     response.status(400).json({ error: 'Informe um texto antes de gerar o áudio.' });
+    return;
+  }
+
+  // Text length validation
+  if (text.length > MAX_TEXT_LENGTH) {
+    response.status(400).json({ error: `O texto excede o limite de ${MAX_TEXT_LENGTH.toLocaleString()} caracteres.` });
     return;
   }
 
