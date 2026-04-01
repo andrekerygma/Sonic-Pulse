@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "dev:client": "vite --port=3000 --host=0.0.0.0",
-    "dev:server": "node --watch server/index.mjs",
+    "dev:client": "node scripts/client.mjs",
+    "dev:server": "node scripts/dev.mjs --server-only",
     "setup:tts": "node scripts/setup-edge-tts.mjs",
-    "start": "node server/index.mjs",
+    "start": "node scripts/start.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",

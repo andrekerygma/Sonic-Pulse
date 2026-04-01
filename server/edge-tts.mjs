@@ -3,54 +3,24 @@ import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { ensureEdgeTtsInstalled, getLocalPythonPath, resolveInstalledEdgeTts } from '../scripts/runtime-deps.mjs';
 
 const execFileAsync = promisify(execFile);
 export const EDGE_TTS_MAX_INPUT_CHARS = 4500;
+let edgeTtsSetupPromise = null;
 
 export class EdgeTtsNotAvailableError extends Error {
   constructor() {
-    super('O edge-tts não está instalado. Execute "npm run setup:tts" ou instale-o globalmente com "pip install edge-tts".');
+    super('O edge-tts ainda não está disponível. O Sonic Pulse tentará configurá-lo automaticamente; se precisar, execute "npm run setup:tts".');
     this.name = 'EdgeTtsNotAvailableError';
   }
 }
 
-function getLocalPythonPath(rootDir) {
-  return path.join(
-    rootDir,
-    '.venv',
-    process.platform === 'win32' ? 'Scripts' : 'bin',
-    process.platform === 'win32' ? 'python.exe' : 'python3',
-  );
-}
-
-function getLocalEdgeTtsPath(rootDir) {
-  return path.join(
-    rootDir,
-    '.venv',
-    process.platform === 'win32' ? 'Scripts' : 'bin',
-    process.platform === 'win32' ? 'edge-tts.exe' : 'edge-tts',
-  );
-}
-
-function getCandidates(rootDir) {
-  return [
-    {
-      label: getLocalEdgeTtsPath(rootDir),
-      command: getLocalEdgeTtsPath(rootDir),
-    },
-    {
-      label: 'edge-tts',
-      command: 'edge-tts',
-    },
-  ];
-}
-
-async function commandExists(command) {
-  try {
-    await access(command);
-    return true;
-  } catch {
-    return false;
+export class EdgeTtsSetupError extends Error {
+  constructor(message, cause) {
+    super(message);
+    this.name = 'EdgeTtsSetupError';
+    this.cause = cause;
   }
 }
 
@@ -211,27 +181,58 @@ function parseVoiceTable(stdout) {
 }
 
 export async function resolveEdgeTts(rootDir) {
-  const candidates = getCandidates(rootDir);
-  const orderedCandidates = [];
+  const candidate = await resolveInstalledEdgeTts(rootDir);
 
-  if (await commandExists(candidates[0].command)) {
-    orderedCandidates.push(candidates[0]);
-  }
-
-  orderedCandidates.push(candidates[1]);
-
-  for (const candidate of orderedCandidates) {
-    try {
-      await runCommand(candidate.command, ['--version']);
-      return candidate;
-    } catch (error) {
-      if (error?.code === 'ENOENT') {
-        continue;
-      }
-    }
+  if (candidate) {
+    return candidate;
   }
 
   throw new EdgeTtsNotAvailableError();
+}
+
+export async function ensureEdgeTtsAvailable(rootDir, options = {}) {
+  const {
+    logger = console,
+    autoInstall = process.env.SONIC_PULSE_DISABLE_AUTO_INSTALL !== '1',
+  } = options;
+
+  try {
+    const candidate = await resolveEdgeTts(rootDir);
+    return {
+      available: true,
+      command: candidate.label,
+      candidate,
+      installed: false,
+    };
+  } catch (error) {
+    if (!(error instanceof EdgeTtsNotAvailableError) || !autoInstall) {
+      throw error;
+    }
+  }
+
+  if (!edgeTtsSetupPromise) {
+    edgeTtsSetupPromise = ensureEdgeTtsInstalled(rootDir, {
+      logger,
+      autoInstall: true,
+    }).finally(() => {
+      edgeTtsSetupPromise = null;
+    });
+  }
+
+  try {
+    const result = await edgeTtsSetupPromise;
+    return {
+      available: true,
+      command: result.candidate.label,
+      candidate: result.candidate,
+      installed: result.installed,
+    };
+  } catch (error) {
+    throw new EdgeTtsSetupError(
+      `A instalação automática do edge-tts falhou. ${error instanceof Error ? error.message : 'Erro desconhecido.'} Execute "npm run setup:tts" para tentar manualmente.`,
+      error,
+    );
+  }
 }
 
 export async function getEdgeTtsStatus(rootDir) {
@@ -240,12 +241,14 @@ export async function getEdgeTtsStatus(rootDir) {
     return {
       available: true,
       command: candidate.label,
+      installing: false,
     };
   } catch (error) {
     if (error instanceof EdgeTtsNotAvailableError) {
       return {
         available: false,
         command: null,
+        installing: edgeTtsSetupPromise !== null,
       };
     }
 
@@ -254,6 +257,7 @@ export async function getEdgeTtsStatus(rootDir) {
 }
 
 export async function listAvailableVoices(rootDir) {
+  await ensureEdgeTtsAvailable(rootDir);
   const localPython = getLocalPythonPath(rootDir);
 
   try {
@@ -408,7 +412,7 @@ async function runWithConcurrencyLimit(tasks, limit) {
 }
 
 export async function generateSpeech(rootDir, options) {
-  const candidate = await resolveEdgeTts(rootDir);
+  const { candidate } = await ensureEdgeTtsAvailable(rootDir);
   const tempDir = await mkdtemp(path.join(os.tmpdir(), 'sonic-pulse-'));
   const outputPath = path.join(tempDir, 'speech.mp3');
   const chunks = splitTextIntoChunks(options.text);

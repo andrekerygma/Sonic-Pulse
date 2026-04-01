@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { EdgeTtsNotAvailableError, generateSpeech, getEdgeTtsStatus, listAvailableVoices } from './edge-tts.mjs';
+import { EdgeTtsNotAvailableError, EdgeTtsSetupError, ensureEdgeTtsAvailable, generateSpeech, getEdgeTtsStatus, listAvailableVoices } from './edge-tts.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,7 +29,7 @@ function isRateLimited(ip) {
 }
 
 // Periodically clean stale entries
-setInterval(() => {
+const staleEntryCleanupInterval = setInterval(() => {
   const now = Date.now();
   for (const [ip, entry] of rateLimitMap) {
     if (now - entry.windowStart > RATE_LIMIT_WINDOW_MS * 2) {
@@ -37,6 +37,7 @@ setInterval(() => {
     }
   }
 }, RATE_LIMIT_WINDOW_MS * 2);
+staleEntryCleanupInterval.unref();
 
 function formatFilename(text) {
   const slug = text
@@ -100,6 +101,11 @@ app.use(express.json({ limit: '1mb' }));
 app.get('/api/tts/status', async (_request, response) => {
   try {
     const status = await getEdgeTtsStatus(rootDir);
+
+    if (!status.available && !status.installing) {
+      void ensureEdgeTtsAvailable(rootDir, { logger: console }).catch(() => {});
+    }
+
     response.json(status);
   } catch (error) {
     response.status(500).json({
@@ -115,7 +121,7 @@ app.get('/api/tts/voices', async (_request, response) => {
     const voices = await listAvailableVoices(rootDir);
     response.json({ voices });
   } catch (error) {
-    if (error instanceof EdgeTtsNotAvailableError) {
+    if (error instanceof EdgeTtsNotAvailableError || error instanceof EdgeTtsSetupError) {
       response.status(503).json({
         error: error.message,
         setupCommand: 'npm run setup:tts',
@@ -166,7 +172,7 @@ app.post('/api/tts/generate', async (request, response) => {
     response.setHeader('X-Sonic-Pulse-Character-Count', String(text.length));
     response.send(result.audioBuffer);
   } catch (error) {
-    if (error instanceof EdgeTtsNotAvailableError) {
+    if (error instanceof EdgeTtsNotAvailableError || error instanceof EdgeTtsSetupError) {
       response.status(503).json({
         error: error.message,
         setupCommand: 'npm run setup:tts',
@@ -190,20 +196,46 @@ if (process.env.NODE_ENV === 'production') {
 
 const port = Number(process.env.PORT ?? (process.env.NODE_ENV === 'production' ? 3000 : 3001));
 const host = process.env.HOST ?? '0.0.0.0';
+let shuttingDown = false;
 
-app.listen(port, host, async () => {
+const server = app.listen(port, host, async () => {
   const publicHost = host === '0.0.0.0' ? 'localhost' : host;
   console.log(`[server] API do Sonic Pulse em execução em http://${publicHost}:${port}`);
 
   try {
-    const status = await getEdgeTtsStatus(rootDir);
-
-    if (status.available) {
-      console.log(`[server] edge-tts disponível via ${status.command}`);
-    } else {
-      console.log('[server] edge-tts não encontrado. Execute "npm run setup:tts".');
-    }
+    const status = await ensureEdgeTtsAvailable(rootDir, { logger: console });
+    console.log(`[server] edge-tts disponível via ${status.command}`);
   } catch (error) {
-    console.log(`[server] falha ao verificar o edge-tts: ${error instanceof Error ? error.message : 'erro desconhecido'}`);
+    console.log(`[server] falha ao configurar o edge-tts: ${error instanceof Error ? error.message : 'erro desconhecido'}`);
   }
 });
+
+server.on('error', (error) => {
+  if (error.code === 'EADDRINUSE') {
+    console.error(`[server] A porta ${port} ja esta em uso.`);
+  } else {
+    console.error(`[server] Falha ao iniciar a API: ${error.message}`);
+  }
+
+  process.exit(1);
+});
+
+function shutdown(exitCode = 0) {
+  if (shuttingDown) {
+    return;
+  }
+
+  shuttingDown = true;
+  clearInterval(staleEntryCleanupInterval);
+
+  server.close(() => {
+    process.exit(exitCode);
+  });
+
+  setTimeout(() => {
+    process.exit(exitCode);
+  }, 1000).unref();
+}
+
+process.on('SIGINT', () => shutdown(0));
+process.on('SIGTERM', () => shutdown(0));
